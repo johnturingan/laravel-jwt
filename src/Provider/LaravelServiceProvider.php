@@ -10,14 +10,11 @@ namespace Snp\JWT\Provider;
 
 
 
-use Illuminate\Support\ServiceProvider as IlluminateServiceProvider;
-
-
 /**
  * Class ServiceProvider
  * @package Snp\JWT\Provider
  */
-class LaravelServiceProvider extends IlluminateServiceProvider
+class LaravelServiceProvider extends AbstractServiceProvider
 {
 
     private $config_prefix = 'jwt';

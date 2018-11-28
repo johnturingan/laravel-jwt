@@ -116,7 +116,9 @@ class JWT implements JWTInterface
     public function createToken (array $claims) : Token
     {
 
-        $payload = $this->payloadFactory->make($claims);
+        $payload = $this->payloadFactory
+            ->resetClaims()
+            ->make($claims);
 
         $token = $this->jose->encode($payload);
 
@@ -196,9 +198,12 @@ class JWT implements JWTInterface
 
         }
 
-        return $this->createToken([
-            'iat' => $payload->get('iat')
-        ]);
+        return $this->createToken(array_merge(
+            $payload->toArray(),
+            [
+                'iat' => $payload->get('iat')
+            ]
+        ));
 
     }
 

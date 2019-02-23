@@ -9,7 +9,6 @@
 namespace Snp\JWT\Provider;
 
 
-
 /**
  * Class ServiceProvider
  * @package Snp\JWT\Provider

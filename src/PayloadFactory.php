@@ -123,17 +123,6 @@ class PayloadFactory
     }
 
     /**
-     * Reset Claims
-     * @return $this
-     */
-    public function resetClaims ()
-    {
-        $this->claims = [];
-        
-        return $this;
-    }
-
-    /**
      * @param $claims
      * @return array
      */

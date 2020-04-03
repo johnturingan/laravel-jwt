@@ -1,6 +1,6 @@
 {
     "name": "johnturingan/laravel-jwt",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "JSON Web Token for Laravel Application",
     "keywords": [
         "jwt",

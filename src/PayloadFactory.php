@@ -89,6 +89,7 @@ class PayloadFactory
      *
      * @param array $claims
      * @return Payload
+     * @throws Exceptions\ClaimInvalidException
      */
     public function make (array $claims = [])
     {

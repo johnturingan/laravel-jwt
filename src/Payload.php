@@ -10,7 +10,6 @@ namespace Snp\JWT;
 
 use Snp\JWT\Claims\Claim;
 use Snp\JWT\Claims\Collection as ClaimCollection;
-use Snp\JWT\Infra\Request\IRequest;
 use Snp\JWT\Validation\IValidator;
 
 

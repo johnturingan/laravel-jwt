@@ -35,7 +35,7 @@ class Token
     public function __construct($value)
     {
 
-        if (count(explode('.', $value)) !== 3) {
+        if (count(explode('.', $value)) < 3) {
             throw new TokenInvalidException('Wrong number of segments');
         }
 

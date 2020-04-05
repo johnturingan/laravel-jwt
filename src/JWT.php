@@ -8,6 +8,7 @@
 
 namespace Snp\JWT;
 
+use Illuminate\Support\Str;
 use Snp\JWT\Encryption\JOSE;
 use Snp\JWT\Exceptions\JWTException;
 use Snp\JWT\Exceptions\TokenBlacklistedException;
@@ -101,7 +102,7 @@ class JWT implements JWTInterface
     {
         $header = $this->request->headers($header);
 
-        if (! starts_with(strtolower($header), strtolower($method))) {
+        if (!Str::startsWith(strtolower($header), strtolower($method))) {
             return false;
         }
 
@@ -112,6 +113,8 @@ class JWT implements JWTInterface
     /**
      * @param array $claims
      * @return Token
+     * @throws Exceptions\TokenInvalidException
+     * @throws JWTException
      */
     public function createToken (array $claims) : Token
     {
@@ -127,6 +130,8 @@ class JWT implements JWTInterface
     /**
      * @param Token|string $token
      * @return Payload
+     * @throws Exceptions\ClaimInvalidException
+     * @throws Exceptions\TokenInvalidException
      * @throws TokenBlacklistedException
      */
     public function decode ($token) : Payload
@@ -150,6 +155,8 @@ class JWT implements JWTInterface
     /**
      * @param Token|string $token
      * @return Payload
+     * @throws Exceptions\ClaimInvalidException
+     * @throws Exceptions\TokenInvalidException
      */
     public function getPayload ($token) : Payload
     {
@@ -167,6 +174,7 @@ class JWT implements JWTInterface
     /**
      * @param Token|string $token
      * @return array
+     * @throws Exceptions\TokenInvalidException
      */
     public function getPayloadArray ($token) : array
     {
@@ -180,6 +188,9 @@ class JWT implements JWTInterface
     /**
      * @param Token|string $token
      * @return Token
+     * @throws Exceptions\TokenInvalidException
+     * @throws JWTException
+     * @throws TokenBlacklistedException
      */
     public function refresh ($token) : Token
     {
@@ -240,6 +251,7 @@ class JWT implements JWTInterface
      *
      * @param Token|string $token
      * @return Token
+     * @throws Exceptions\TokenInvalidException
      */
     private function resolveToken ($token)
     {

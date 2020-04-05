@@ -52,6 +52,17 @@ return [
     */
     'signature_secret' => env('JWT_SIGNATURE_SECRET'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | JWT Signature Key
+    |--------------------------------------------------------------------------
+    |
+    | Don't forget to set this, as it will be used to sign your tokens.
+    | A helper command is provided for this: `php artisan jwt:generate`
+    |
+    */
+    'signature_key' => env('JWT_SIGNATURE_KEY'),
+
 
     /*
     |--------------------------------------------------------------------------
@@ -88,7 +99,8 @@ return [
     |
     */
 
-    'encrypt_algo' => env("JWT_ENCRYPT_ALGO", 'A256GCM'),
+    'encrypt_key_algo' => env("JWT_ENCRYPT_KEY_ALGO", 'A256GCMKW'),
+    'encrypt_content_algo' => env("JWT_ENCRYPT_CONTENT_ALGO", 'A256GCM'),
 
     /*
     |--------------------------------------------------------------------------
@@ -144,7 +156,7 @@ return [
         | Specify which JOSE Adapter to be used
         |
         */
-        'jose' => \Snp\JWT\Encryption\Adapters\SpomkyJWS::class,
+        'jose' => \Snp\JWT\Encryption\Adapters\SpomkyJWE::class,
 
     ],
 

@@ -36,8 +36,9 @@ class PayloadValidator implements IValidator
      * Do Some check on the value
      *
      * @param Payload $value
-     * @throws mixed
-     * @return bool
+     * @return void
+     * @throws TokenExpiredException
+     * @throws TokenInvalidException
      */
     public function validate($value)
     {

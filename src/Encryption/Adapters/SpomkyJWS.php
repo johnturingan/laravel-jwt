@@ -8,15 +8,16 @@
 
 namespace Snp\JWT\Encryption\Adapters;
 
-use Jose\Factory\JWEFactory;
-use Jose\Factory\JWKFactory;
-use Jose\Factory\JWSFactory;
-use Jose\Loader;
-use Jose\Object\JWKInterface;
+use Exception;
+use Jose\Component\Core\JWK;
+use Jose\Component\Signature\JWSBuilder;
+use Jose\Component\Signature\JWSVerifier;
+use Jose\Component\Signature\Serializer\CompactSerializer;
+use Jose\Component\Signature\Serializer\JWSSerializerManager;
 use Snp\JWT\Encryption\JOSE;
 use Snp\JWT\Exceptions\JWTException;
 use Snp\JWT\Exceptions\TokenInvalidException;
-use Snp\JWT\Infra\Config\Repository as ConfigRepository;
+use Snp\JWT\Infra\Config\Repository as Config;
 use Snp\JWT\Payload;
 use Snp\JWT\Token;
 
@@ -27,46 +28,33 @@ use Snp\JWT\Token;
 class SpomkyJWS extends JoseAdapter implements JOSE
 {
 
-
     /**
-     * @var JWKInterface
+     * JoseAdapter constructor.
+     * @param Config $config
      */
-    private $signatureKey;
-
-
-    /**
-     * Spomky constructor.
-     * @param ConfigRepository $configRepository
-     */
-    function __construct(ConfigRepository $configRepository)
+    function __construct(Config $config)
     {
 
-        $sign_secret = $configRepository->get('signature_secret');
-        $sign_algo = $configRepository->get('signature_algo');
+        $this->secret = $config->get('signature_secret');
+        $this->key = $config->get('signature_key');
+        $this->algo = $config->get('signature_algo');
 
-
-        parent::__construct($sign_secret, $sign_algo);
-
-        $this->signatureKey = $this->buildSignatureKey(
-            $sign_secret,
-            $sign_algo
-        );
     }
 
     /**
      * Build signature key
      *
-     * @param $secret
-     * @param $algo
-     * @return \Jose\Object\JWK|\Jose\Object\JWKInterface|\Jose\Object\JWKSet|\Jose\Object\JWKSetInterface
+     * @return JWK
      */
-    private function buildSignatureKey ($secret, $algo)
+    private function buildJWK ()
     {
-        return JWKFactory::createFromValues([
+
+        return new JWK([
             'kty' => 'oct',
-            'k'   => $secret,
-            'alg' => $algo,
+            'kid' => $this->secret,
+            'k' => $this->key,
         ]);
+
     }
 
     /**
@@ -79,16 +67,29 @@ class SpomkyJWS extends JoseAdapter implements JOSE
     public function encode (Payload $payload)
     {
 
-        $claims = $payload->toArray();
+        $claims = json_encode($payload->toArray());
+
+        // We instantiate our JWS Builder.
+        $builder = new JWSBuilder($this->makeAlgorithmManager($this->algo));
 
         try {
 
-            return JWSFactory::createJWSToCompactJSON($claims, $this->signatureKey, [
-                'alg' => $this->signatureKey->get('alg'),
-                'zip' => 'DEF'
-            ]);
+            $jws = $builder
+                ->create()                               // We want to create a new JWS
+                ->withPayload($claims)                  // We set the payload
+                ->addSignature($this->buildJWK(), [
+                    'alg' => $this->algo,
+                    'zip' => 'DEF'
 
-        } catch (\Exception $e) {
+                ]) // We add a signature with a simple protected header
+                ->build();
+
+
+            $serializer = new CompactSerializer(); // The serializer
+
+            return $serializer->serialize($jws, 0);
+
+        } catch (Exception $e) {
 
             throw new JWTException('Could not create token: '.$e->getMessage());
         }
@@ -107,20 +108,34 @@ class SpomkyJWS extends JoseAdapter implements JOSE
     {
         try {
 
-            $loader = new Loader();
+            // We instantiate our JWS Verifier.
+            $verifier = new JWSVerifier($this->makeAlgorithmManager($this->algo));
 
-            $verifiedJWS = $loader->loadAndVerifySignatureUsingKey(
-                (string)$token,
-                $this->signatureKey,
-                [ $this->signatureKey->get('alg') ]
-            );
+            $serializerManager = new JWSSerializerManager([
+                new CompactSerializer(),
+            ]);
 
-        } catch (\Exception $e) {
+            // We try to load the token.
+            $jws = $serializerManager->unserialize($token->get());
+
+            // We verify the signature. This method does NOT check the header.
+            // The arguments are:
+            // - The JWS object,
+            // - The key,
+            // - The index of the signature to check. See
+            $isVerified = $verifier->verifyWithKey($jws, $this->buildJWK(), 0);
+
+            if ($isVerified) {
+
+                return json_decode($jws->getPayload(), true);
+            }
+
+            throw new Exception('Decode unsuccessful');
+
+        } catch (Exception $e) {
 
             throw new TokenInvalidException('Could not decode token: ' . $e->getMessage());
         }
-
-        return $verifiedJWS->getPayload();
 
     }
 

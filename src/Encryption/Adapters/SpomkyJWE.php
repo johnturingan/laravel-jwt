@@ -8,15 +8,18 @@
 
 namespace Snp\JWT\Encryption\Adapters;
 
-use Jose\Factory\JWEFactory;
-use Jose\Factory\JWKFactory;
-use Jose\Factory\JWSFactory;
-use Jose\Loader;
-use Jose\Object\JWKInterface;
+use Exception;
+use Jose\Component\Core\JWK;
+use Jose\Component\Encryption\Compression\CompressionMethodManager;
+use Jose\Component\Encryption\Compression\Deflate;
+use Jose\Component\Encryption\JWEBuilder;
+use Jose\Component\Encryption\JWEDecrypter;
+use Jose\Component\Encryption\Serializer\CompactSerializer;
+use Jose\Component\Encryption\Serializer\JWESerializerManager;
 use Snp\JWT\Encryption\JOSE;
 use Snp\JWT\Exceptions\JWTException;
 use Snp\JWT\Exceptions\TokenInvalidException;
-use Snp\JWT\Infra\Config\Repository as ConfigRepository;
+use Snp\JWT\Infra\Config\Repository as Config;
 use Snp\JWT\Payload;
 use Snp\JWT\Token;
 
@@ -27,73 +30,59 @@ use Snp\JWT\Token;
 class SpomkyJWE extends JoseAdapter implements JOSE
 {
 
-
     /**
-     * @var JWKInterface
+     * JoseAdapter constructor.
+     * @param Config $config
      */
-    private $signatureKey;
-
-    /**
-     * @var JWKInterface
-     */
-    private $encryptionKey;
-
-    /**
-     * Spomky constructor.
-     * @param ConfigRepository $configRepository
-     */
-    function __construct(ConfigRepository $configRepository)
+    function __construct(Config $config)
     {
 
-        $sign_secret = $configRepository->get('signature_secret');
-        $sign_algo = $configRepository->get('signature_algo');
+        $this->key = $config->get('signature_key');
+        $this->secret = $config->get('encrypt_secret');
+        $this->algo = $config->get('encrypt_content_algo');
+        $this->key_algo = $config->get('encrypt_key_algo');
 
-        $encrypt_secret = $configRepository->get('encrypt_secret');
-        $encrypt_algo = $configRepository->get('encrypt_algo');
+    }
 
-        parent::__construct($sign_secret, $sign_algo);
+    /**
+     * @return array
+     */
+    protected function buildManagers ()
+    {
 
-        $this->signatureKey = $this->buildSignatureKey(
-            $sign_secret,
-            $sign_algo
-        );
+        // The key encryption algorithm manager with the A256KW algorithm.
+        $keyEncryptionAlgorithmManager = $this->makeAlgorithmManager($this->key_algo);
 
-        $this->encryptionKey = $this->buildEncryptionKey(
-            $encrypt_secret,
-            $encrypt_algo
-        );
+
+        // The content encryption algorithm manager with the A256CBC-HS256 algorithm.
+        $contentEncryptionAlgorithmManager = $this->makeAlgorithmManager($this->algo);
+
+        // The compression method manager with the DEF (Deflate) method.
+        $compressionMethodManager = new CompressionMethodManager([
+            new Deflate(),
+        ]);
+
+        return [
+            'KEAM' => $keyEncryptionAlgorithmManager,
+            'CEAM' => $contentEncryptionAlgorithmManager,
+            'CMM' => $compressionMethodManager
+        ];
     }
 
     /**
      * Build signature key
      *
-     * @param $secret
-     * @param $algo
-     * @return \Jose\Object\JWK|\Jose\Object\JWKInterface|\Jose\Object\JWKSet|\Jose\Object\JWKSetInterface
+     * @return JWK
      */
-    private function buildSignatureKey ($secret, $algo)
+    private function buildJWK ()
     {
-        return JWKFactory::createFromValues([
-            'kty' => 'oct',
-            'k'   => $secret,
-            'alg' => $algo,
-        ]);
-    }
 
-    /**
-     * Build encryption key
-     *
-     * @param $secret
-     * @param $algo
-     * @return \Jose\Object\JWK|\Jose\Object\JWKInterface|\Jose\Object\JWKSet|\Jose\Object\JWKSetInterface
-     */
-    private function buildEncryptionKey($secret, $algo)
-    {
-        return JWKFactory::createFromValues([
+        return new JWK([
             'kty' => 'oct',
-            'k'   => $secret,
-            'alg' => $algo,
+            'kid' => $this->secret,
+            'k' => $this->key,
         ]);
+
     }
 
     /**
@@ -110,22 +99,32 @@ class SpomkyJWE extends JoseAdapter implements JOSE
 
         try {
 
-            $token = JWEFactory::createJWEToCompactJSON(
-                $claims,
-                $this->encryptionKey,
-                [
-                    'alg' => 'dir',
-                    'enc' => $this->encryptionKey->get('alg'),
-                    'zip' => 'DEF'
-                ]
+            $managers = $this->buildManagers();
+
+            // We instantiate our JWE Builder.
+            $builder = new JWEBuilder(
+                $managers['KEAM'],
+                $managers['CEAM'],
+                $managers['CMM']
             );
 
-            return JWSFactory::createJWSToCompactJSON($token, $this->signatureKey, [
-                'alg' => $this->signatureKey->get('alg'),
-                'zip' => 'DEF'
-            ]);
 
-        } catch (\Exception $e) {
+            $jwe = $builder
+                ->create()              // We want to create a new JWE
+                ->withPayload(json_encode($claims)) // We set the payload
+                ->withSharedProtectedHeader([
+                    'alg' => $this->key_algo,        // Key Encryption Algorithm
+                    'enc' => $this->algo, // Content Encryption Algorithm
+                    'zip' => 'DEF'            // We enable the compression (irrelevant as the payload is small, just for the example).
+                ])
+                ->addRecipient($this->buildJWK())    // We add a recipient (a shared key or public key).
+                ->build();
+
+            $serializer = new CompactSerializer(); // The serializer
+
+            return $serializer->serialize($jwe, 0);
+
+        } catch (Exception $e) {
 
             throw new JWTException('Could not create token: '.$e->getMessage());
         }
@@ -144,27 +143,38 @@ class SpomkyJWE extends JoseAdapter implements JOSE
     {
         try {
 
-            $loader = new Loader();
+            $managers = $this->buildManagers();
 
-            $verifiedJWS = $loader->loadAndVerifySignatureUsingKey(
-                (string)$token,
-                $this->signatureKey,
-                [ $this->signatureKey->get('alg') ]
+            // We instantiate our JWE Builder.
+            $decrypter = new JWEDecrypter(
+                $managers['KEAM'],
+                $managers['CEAM'],
+                $managers['CMM']
             );
 
-            $jwe = $loader->loadAndDecryptUsingKey(
-                $verifiedJWS->getPayload(),
-                $this->encryptionKey,
-                [ 'dir' ],
-                [ $this->encryptionKey->get('alg') ]
-            );
+            // The serializer manager. We only use the JWE Compact Serialization Mode.
+            $serializerManager = new JWESerializerManager([
+                new CompactSerializer(),
+            ]);
 
-        } catch (\Exception $e) {
+            // We try to load the token.
+            $jwe = $serializerManager->unserialize($token->get());
+
+            // We decrypt the token. This method does NOT check the header.
+            $success = $decrypter->decryptUsingKey($jwe, $this->buildJWK(), 0);
+
+            if ($success) {
+
+                return json_decode($jwe->getPayload(), true);
+            }
+
+            throw new Exception('Decryption unsuccessful');
+
+        } catch (Exception $e) {
 
             throw new TokenInvalidException('Could not decode token: ' . $e->getMessage());
         }
 
-        return $jwe->getPayload();
 
     }
 
